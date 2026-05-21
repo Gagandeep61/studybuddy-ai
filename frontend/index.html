@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudyBuddy AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+ 
+  <header class="header">
+    <div class="logo">StudyBuddy<span>AI</span></div>
+    <nav class="tabs" id="tabNav">
+      <button class="tab active" data-tab="upload">Upload</button>
+      <button class="tab" data-tab="quiz" disabled>Quiz</button>
+      <button class="tab" data-tab="flashcards" disabled>Flashcards</button>
+      <button class="tab" data-tab="exam" disabled>Exam Prep</button>
+      <button class="tab" data-tab="simple" disabled>Explain Simply</button>
+    </nav>
+    <div class="header-right">
+      <div class="calls-counter" id="callsCounter">
+        <div class="calls-bar"><div class="calls-fill" id="callsFill"></div></div>
+        <span class="calls-label" id="callsLabel">0 / 20</span>
+      </div>
+      <div class="status-dot" id="statusDot" title="Connecting..."></div>
+    </div>
+  </header>
+ 
+  <main class="main">
+ 
+    <!-- TAB 1: UPLOAD -->
+    <section class="panel active" id="tab-upload">
+      <div class="page-title">
+        <h1>Upload material</h1>
+        <p>PDF or text. AI will analyse and build your study set.</p>
+      </div>
+      <div class="notice" id="demoNotice">
+        20 AI calls per session · resets every 3 hours · one full session uses ~3 calls
+      </div>
+      <div class="upload-row">
+        <div class="drop-zone" id="dropZone">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 3v12M12 3l-4 4M12 3l4 4"/><path d="M3 19h18"/></svg>
+          <p>Drop PDF here</p>
+          <label class="link">browse<input type="file" id="fileInput" accept=".pdf" hidden /></label>
+          <span class="filename" id="dropFilename"></span>
+        </div>
+        <div class="divider-v">or</div>
+        <textarea id="pasteText" class="textarea" placeholder="Paste notes, chapters, slides…"></textarea>
+      </div>
+      <button class="btn-primary" id="processBtn">Analyse →</button>
+ 
+      <div class="card hidden" id="summaryCard">
+        <div class="summary-top">
+          <div>
+            <p class="mono dim" id="summarySubject"></p>
+            <h2 id="summaryTopic"></h2>
+          </div>
+          <div class="chips-row">
+            <span class="chip" id="difficultyChip"></span>
+            <span class="chip" id="wordChip"></span>
+            <span class="chip" id="timeChip"></span>
+          </div>
+        </div>
+        <div class="summary-grid">
+          <div>
+            <p class="section-label">Key Concepts</p>
+            <ul class="concept-list" id="conceptList"></ul>
+          </div>
+          <div>
+            <p class="section-label">Key Terms</p>
+            <div class="tag-row" id="termChips"></div>
+          </div>
+        </div>
+        <div class="card-footer">
+          <button class="btn-secondary" id="loadExtrasBtn">Generate study aids</button>
+          <button class="btn-ghost" id="goToQuizBtn">Go to Quiz →</button>
+        </div>
+      </div>
+    </section>
+ 
+    <!-- TAB 2: QUIZ -->
+    <section class="panel" id="tab-quiz">
+      <div class="page-title">
+        <h1>Quiz</h1>
+        <p>10 questions generated from your material.</p>
+      </div>
+      <div id="quizIdle">
+        <button class="btn-primary" id="generateQuizBtn">Generate Quiz →</button>
+      </div>
+      <div class="hidden" id="quizWrap">
+        <div class="quiz-meta">
+          <span class="mono dim"><span id="quizCurrent">1</span> / <span id="quizTotal">10</span></span>
+          <span class="tag" id="quizTag"></span>
+          <div class="quiz-progress"><div class="quiz-fill" id="quizFill"></div></div>
+        </div>
+        <div class="card question-card" id="questionCard">
+          <p class="question-text" id="questionText"></p>
+          <div class="options" id="optionsGrid"></div>
+          <div class="feedback hidden" id="feedbackBox"></div>
+          <button class="btn-secondary hidden" id="nextBtn">Next →</button>
+        </div>
+      </div>
+      <div class="card hidden" id="scoreCard"></div>
+    </section>
+ 
+    <!-- TAB 3: FLASHCARDS -->
+    <section class="panel" id="tab-flashcards">
+      <div class="page-title"><h1>Flashcards</h1></div>
+      <div class="loading-msg" id="flashcardsLoading">Generate study aids from the Upload tab first.</div>
+      <div class="hidden" id="flashcardWrap">
+        <p class="mono dim fc-counter"><span id="fcKnown">0</span> known · <span id="fcTotal">0</span> total</p>
+        <div class="fc-scene">
+          <div class="flashcard" id="flashcard">
+            <div class="fc-face fc-front">
+              <span class="fc-side-label">TERM</span>
+              <p id="fcTerm"></p>
+              <span class="fc-hint">tap to flip</span>
+            </div>
+            <div class="fc-face fc-back">
+              <span class="fc-side-label">DEFINITION</span>
+              <p id="fcDef"></p>
+            </div>
+          </div>
+        </div>
+        <div class="fc-controls">
+          <button class="btn-ghost" id="fcPrev">← Prev</button>
+          <button class="btn-secondary fc-known" id="fcKnownBtn">✓ Known</button>
+          <button class="btn-secondary fc-review" id="fcReview">↩ Again</button>
+          <button class="btn-ghost" id="fcNext">Next →</button>
+        </div>
+        <button class="btn-ghost center" id="fcShuffle">⇄ Shuffle</button>
+      </div>
+    </section>
+ 
+    <!-- TAB 4: EXAM PREP -->
+    <section class="panel" id="tab-exam">
+      <div class="page-title">
+        <h1>Exam Prep</h1>
+        <p>5 questions likely to appear on your exam.</p>
+      </div>
+      <div class="loading-msg" id="examLoading">Generate study aids from the Upload tab first.</div>
+      <div class="hidden" id="examList"></div>
+    </section>
+ 
+    <!-- TAB 5: EXPLAIN SIMPLY -->
+    <section class="panel" id="tab-simple">
+      <div class="page-title">
+        <h1>Explain Simply</h1>
+        <p>The whole topic, no jargon.</p>
+      </div>
+      <div class="loading-msg" id="simpleLoading">Generate study aids from the Upload tab first.</div>
+      <div class="hidden" id="simpleWrap">
+        <div class="simple-text" id="simpleText"></div>
+        <div class="followup-section">
+          <p class="section-label">Follow-up questions <span class="mono dim" id="followupCounter">(3 remaining)</span></p>
+          <div class="followup-row">
+            <input type="text" id="followupInput" class="input" placeholder="Ask anything about this topic…" />
+            <button class="btn-primary" id="followupBtn">Ask</button>
+          </div>
+          <div class="followup-answer hidden" id="followupResponse"></div>
+        </div>
+      </div>
+    </section>
+ 
+  </main>
+ 
+  <!-- LIMIT MODAL -->
+  <div class="modal-overlay hidden" id="limitModal">
+    <div class="modal">
+      <h2>Session limit reached</h2>
+      <p>You've used all 20 AI calls for this session.</p>
+      <p class="modal-timer mono">Resets in <span id="modalCountdown">—</span></p>
+      <p class="dim small">This is a portfolio demo — limits keep it free for everyone.</p>
+    </div>
+  </div>
+ 
+  <div class="toast hidden" id="toast"></div>
+  <script src="script.js"></script>
+</body>
+</html>
+ 

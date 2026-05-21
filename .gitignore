@@ -1,0 +1,21 @@
+# Virtual Environments
+venv/
+env/
+
+# Python Cache & Compiled Files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Variables & Secrets (CRITICAL)
+.env
+.env.*
+*.pem
+
+# VS Code IDE Settings
+.vscode/
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
