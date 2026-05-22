@@ -1,0 +1,41 @@
+name: Safe Deploy to Hugging Face
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v3
+
+      # 1. Download the existing HF Space (This protects your frontend files!)
+      - name: Clone Existing Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git clone https://gagan61:$HF_TOKEN@huggingface.co/spaces/gagan61/studybuddy-ai hf_workspace
+
+      # 2. Copy ONLY your updated backend files into that workspace
+      - name: Inject Updated Backend Files
+        run: |
+          # Copy your local backend files into the downloaded folder
+          cp app.py hf_workspace/
+          cp requirements.txt hf_workspace/
+          cp Dockerfile hf_workspace/
+          
+          # Inject the Hugging Face YAML config
+          cp hf-config.txt hf_workspace/README.md
+
+      # 3. Commit the merged files and push them back cleanly
+      - name: Push Safely to Hugging Face
+        run: |
+          cd hf_workspace
+          git config user.name "github-actions[bot]"
+          git config user.email "actions@github.com"
+          git add .
+          # The '|| echo' prevents the pipeline from failing if no files actually changed
+          git commit -m "Deploying backend update via CI/CD" || echo "No changes to commit"
+          git push origin main
