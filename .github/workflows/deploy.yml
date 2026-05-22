@@ -21,8 +21,10 @@ jobs:
       # 2. Copy ONLY your updated backend files into that workspace
       - name: Inject Updated Backend Files
         run: |
-          # Copy your local backend files into the downloaded folder
-          cp app.py hf_workspace/
+          # Copy your entire 'app' directory
+          cp -r app hf_workspace/
+          
+          # Copy your requirements and Dockerfile from the root
           cp requirements.txt hf_workspace/
           cp Dockerfile hf_workspace/
           
