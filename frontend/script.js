@@ -1,6 +1,6 @@
 /* StudyBuddy AI v2 — script.js */
  
-const API_URL = "http://localhost:8000"; // → replace with HuggingFace URL after deploy
+const API_URL = "https://gagan61-studybuddy-ai.hf.space"; // → replace with HuggingFace URL after deploy
  
 // ── Session ID ────────────────────────────────────────────────────────────────
 function getSessionId() {

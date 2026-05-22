@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout GitHub Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # 1. Download the existing HF Space (This protects your frontend files!)
       - name: Clone Existing Hugging Face Space
