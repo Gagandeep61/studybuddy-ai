@@ -20,6 +20,8 @@ import google.generativeai as genai
 import PyPDF2
 
 from .prompts import PROCESS_PROMPT, QUIZ_PROMPT, EXTRAS_PROMPT, FOLLOWUP_SYSTEM
+from dotenv import load_dotenv
+load_dotenv()
 
 # ── Gemini client ─────────────────────────────────────────────────────────────
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
