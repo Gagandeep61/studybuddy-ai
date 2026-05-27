@@ -1,6 +1,7 @@
 """
 main.py — StudyBuddy AI v3
-Rate limiting: single global daily cap of 200 calls, resets at midnight UTC.
+Rate limiting: single global daily cap of 50 successful LLM calls, resets at midnight UTC.
+Failed/errored calls do NOT count. Counter increments only on successful LLM response.
 Persisted to /data/sb_daily.json on HuggingFace (survives container restarts).
 Threading lock prevents concurrent writes corrupting the JSON file.
 """
@@ -91,7 +92,6 @@ def check_limits(response: Response):
     with _lock:
         if daily_remaining() <= 0:
             raise HTTPException(503, "Daily limit reached. The demo resets at midnight UTC!")
-        _increment_daily()
         remaining = daily_remaining()
     response.headers["X-Daily-Remaining"] = str(remaining)
     response.headers["X-Daily-Limit"]     = str(DAILY_LIMIT)
@@ -117,6 +117,8 @@ def call_llm(system: str, user: str) -> str:
             if content is None:
                 last_error = ValueError(f"{model} returned empty content")
                 continue
+            with _lock:
+                _increment_daily()  # only count successful LLM calls
             return content
         except Exception as e:
             err = str(e).lower()
@@ -158,9 +160,8 @@ def health():
 
 
 @app.post("/extract-pdf")
-async def extract_pdf(response: Response, file: UploadFile = File(...)):
-    """Extract text from an uploaded PDF. Counts as 1 daily call."""
-    check_limits(response)
+async def extract_pdf(file: UploadFile = File(...)):
+    """Extract text from an uploaded PDF. No LLM call — does not count toward daily limit."""
     contents = await file.read()
     reader   = PyPDF2.PdfReader(io.BytesIO(contents))
     pages    = [p.extract_text() for p in reader.pages if p.extract_text()]
