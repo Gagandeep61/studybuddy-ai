@@ -113,7 +113,11 @@ def call_llm(system: str, user: str) -> str:
                 ],
                 max_tokens=4096,
             )
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content is None:
+                last_error = ValueError(f"{model} returned empty content")
+                continue
+            return content
         except Exception as e:
             err = str(e).lower()
             if any(x in err for x in ["rate limit", "429", "quota", "provider returned error", "max_tokens"]):
