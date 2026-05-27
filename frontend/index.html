@@ -9,35 +9,48 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
- 
+
+  <!-- ── Header: logo + counter only (tabs moved below) ─────────────────── -->
   <header class="header">
     <div class="logo">StudyBuddy<span>AI</span></div>
-    <nav class="tabs" id="tabNav">
-      <button class="tab active" data-tab="upload">Upload</button>
-      <button class="tab" data-tab="quiz" disabled>Quiz</button>
-      <button class="tab" data-tab="flashcards" disabled>Flashcards</button>
-      <button class="tab" data-tab="exam" disabled>Exam Prep</button>
-      <button class="tab" data-tab="simple" disabled>Explain Simply</button>
-    </nav>
     <div class="header-right">
       <div class="calls-counter" id="callsCounter">
         <div class="calls-bar"><div class="calls-fill" id="callsFill"></div></div>
-        <span class="calls-label" id="callsLabel">0 / 20</span>
+        <span class="calls-label" id="callsLabel">0 used</span>
       </div>
       <div class="status-dot" id="statusDot" title="Connecting..."></div>
     </div>
   </header>
- 
+
+  <!-- ── Tab nav: full-width strip between header and content ───────────── -->
+  <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Study sections">
+    <button class="tab active" data-tab="upload" role="tab" aria-selected="true">
+      Upload
+    </button>
+    <button class="tab" data-tab="quiz" role="tab" aria-selected="false" disabled>
+      Quiz <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+    </button>
+    <button class="tab" data-tab="flashcards" role="tab" aria-selected="false" disabled>
+      Flashcards <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+    </button>
+    <button class="tab" data-tab="exam" role="tab" aria-selected="false" disabled>
+      Exam Prep <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+    </button>
+    <button class="tab" data-tab="simple" role="tab" aria-selected="false" disabled>
+      Explain Simply <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+    </button>
+  </nav>
+
   <main class="main">
- 
+
     <!-- TAB 1: UPLOAD -->
-    <section class="panel active" id="tab-upload">
+    <section class="panel active" id="tab-upload" role="tabpanel">
       <div class="page-title">
         <h1>Upload material</h1>
         <p>PDF or text. AI will analyse and build your study set.</p>
       </div>
       <div class="notice" id="demoNotice">
-        20 AI calls per session · resets every 3 hours · one full session uses ~3 calls
+        Free demo · AI-powered · no account needed · one full session uses ~3 calls
       </div>
       <div class="upload-row">
         <div class="drop-zone" id="dropZone">
@@ -47,10 +60,11 @@
           <span class="filename" id="dropFilename"></span>
         </div>
         <div class="divider-v">or</div>
+        <div class="mobile-or">— or —</div>
         <textarea id="pasteText" class="textarea" placeholder="Paste notes, chapters, slides…"></textarea>
       </div>
       <button class="btn-primary" id="processBtn">Analyse →</button>
- 
+
       <div class="card hidden" id="summaryCard">
         <div class="summary-top">
           <div>
@@ -79,9 +93,9 @@
         </div>
       </div>
     </section>
- 
+
     <!-- TAB 2: QUIZ -->
-    <section class="panel" id="tab-quiz">
+    <section class="panel" id="tab-quiz" role="tabpanel">
       <div class="page-title">
         <h1>Quiz</h1>
         <p>10 questions generated from your material.</p>
@@ -104,9 +118,9 @@
       </div>
       <div class="card hidden" id="scoreCard"></div>
     </section>
- 
+
     <!-- TAB 3: FLASHCARDS -->
-    <section class="panel" id="tab-flashcards">
+    <section class="panel" id="tab-flashcards" role="tabpanel">
       <div class="page-title"><h1>Flashcards</h1></div>
       <div class="loading-msg" id="flashcardsLoading">Generate study aids from the Upload tab first.</div>
       <div class="hidden" id="flashcardWrap">
@@ -133,9 +147,9 @@
         <button class="btn-ghost center" id="fcShuffle">⇄ Shuffle</button>
       </div>
     </section>
- 
+
     <!-- TAB 4: EXAM PREP -->
-    <section class="panel" id="tab-exam">
+    <section class="panel" id="tab-exam" role="tabpanel">
       <div class="page-title">
         <h1>Exam Prep</h1>
         <p>5 questions likely to appear on your exam.</p>
@@ -143,9 +157,9 @@
       <div class="loading-msg" id="examLoading">Generate study aids from the Upload tab first.</div>
       <div class="hidden" id="examList"></div>
     </section>
- 
+
     <!-- TAB 5: EXPLAIN SIMPLY -->
-    <section class="panel" id="tab-simple">
+    <section class="panel" id="tab-simple" role="tabpanel">
       <div class="page-title">
         <h1>Explain Simply</h1>
         <p>The whole topic, no jargon.</p>
@@ -163,21 +177,20 @@
         </div>
       </div>
     </section>
- 
+
   </main>
- 
+
   <!-- LIMIT MODAL -->
   <div class="modal-overlay hidden" id="limitModal">
     <div class="modal">
-      <h2>Session limit reached</h2>
-      <p>You've used all 20 AI calls for this session.</p>
-      <p class="modal-timer mono">Resets in <span id="modalCountdown">—</span></p>
+      <h2>Daily limit reached</h2>
+      <p>The demo has hit its daily AI call limit.</p>
+      <p class="modal-timer mono">Resets at midnight UTC</p>
       <p class="dim small">This is a portfolio demo — limits keep it free for everyone.</p>
     </div>
   </div>
- 
+
   <div class="toast hidden" id="toast"></div>
   <script src="script.js"></script>
 </body>
 </html>
- 

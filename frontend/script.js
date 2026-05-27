@@ -1,15 +1,7 @@
-/* StudyBuddy AI v2 — script.js */
- 
-const API_URL = "https://gagan61-studybuddy-ai.hf.space"; // → replace with HuggingFace URL after deploy
- 
-// ── Session ID ────────────────────────────────────────────────────────────────
-function getSessionId() {
-  let id = localStorage.getItem("sb_session_id");
-  if (!id) { id = crypto.randomUUID(); localStorage.setItem("sb_session_id", id); }
-  return id;
-}
-const SESSION_ID = getSessionId();
- 
+/* StudyBuddy AI — script.js */
+
+const API_URL = "https://gagan61-studybuddy-ai.hf.space";
+
 // ── State ─────────────────────────────────────────────────────────────────────
 const state = {
   rawText: "", processedData: null,
@@ -17,25 +9,40 @@ const state = {
   extras: null,
   fcIndex: 0, fcKnown: new Set(), fcDeck: [],
   followupCount: 0,
-  callsUsed: 0, callsLimit: 20, resetMinutes: 180,
+  callsUsed: 0,       // local session count, resets on page reload
   _pendingFile: null,
 };
- 
+
 const $ = id => document.getElementById(id);
- 
+
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     if (btn.disabled) return;
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
-    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab").forEach(b => {
+      b.classList.remove("active", "has-badge");
+      b.removeAttribute("aria-selected");
+    });
     $(`tab-${btn.dataset.tab}`).classList.add("active");
     btn.classList.add("active");
+    btn.setAttribute("aria-selected", "true");
   });
 });
+
 function switchTab(name) { document.querySelector(`.tab[data-tab="${name}"]`)?.click(); }
-function unlockTab(name) { document.querySelector(`.tab[data-tab="${name}"]`).disabled = false; }
- 
+
+function unlockTab(name) {
+  const tab = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (!tab) return;
+  tab.disabled = false;
+  tab.removeAttribute("aria-disabled");
+  const lock = tab.querySelector(".tab-lock");
+  if (lock) lock.remove();
+  tab.classList.add("has-badge", "new-unlock");
+  setTimeout(() => tab.classList.remove("new-unlock"), 1650);
+}
+
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let toastTimer;
 function toast(msg, type = "") {
@@ -43,72 +50,59 @@ function toast(msg, type = "") {
   const t = $("toast");
   t.textContent = msg; t.className = "toast " + type;
   t.classList.remove("hidden");
-  toastTimer = setTimeout(() => t.classList.add("hidden"), 3000);
+  toastTimer = setTimeout(() => t.classList.add("hidden"), 3500);
 }
- 
-// ── Call counter ──────────────────────────────────────────────────────────────
-function updateCounter(used, limit, resetMins) {
-  state.callsUsed = used; state.callsLimit = limit; state.resetMinutes = resetMins;
-  const pct = Math.min(100, (used / limit) * 100);
-  const fill = $("callsFill");
-  fill.style.width = pct + "%";
-  fill.className = "calls-fill" + (pct >= 80 ? " danger" : pct >= 50 ? " warn" : "");
-  $("callsLabel").textContent = `${used} / ${limit}`;
- 
-  const rem = limit - used;
-  if (rem <= 0)  showLimitModal(resetMins);
-  else if (rem === 4) toast(`⚠ ${rem} calls left — resets in ${resetMins}min`, "");
+
+// ── Call counter (local, informational only) ──────────────────────────────────
+function updateCounter() {
+  state.callsUsed++;
+  const visualPct = Math.min(100, (state.callsUsed / 15) * 100);
+  $("callsFill").style.width = visualPct + "%";
+  $("callsLabel").textContent = `${state.callsUsed} used`;
 }
- 
-// ── Limit modal ───────────────────────────────────────────────────────────────
-let countdownInterval;
-function showLimitModal(mins) {
+
+// ── Daily limit modal ─────────────────────────────────────────────────────────
+function showLimitModal() {
   $("limitModal").classList.remove("hidden");
-  let secs = mins * 60;
-  const tick = () => {
-    $("modalCountdown").textContent = `${Math.floor(secs/60)}m ${String(secs%60).padStart(2,"0")}s`;
-    if (secs-- <= 0) { clearInterval(countdownInterval); $("modalCountdown").textContent = "now — refresh!"; }
-  };
-  tick(); clearInterval(countdownInterval); countdownInterval = setInterval(tick, 1000);
 }
- 
+
 // ── API fetch ─────────────────────────────────────────────────────────────────
 async function api(endpoint, body, isForm = false) {
-  const opts = { method: "POST", headers: { "X-Session-ID": SESSION_ID } };
+  const opts = { method: "POST", headers: {} };
   if (isForm) { opts.body = body; }
   else { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
- 
+
   const res = await fetch(`${API_URL}${endpoint}`, opts);
-  const used  = parseInt(res.headers.get("X-Calls-Used")    || state.callsUsed);
-  const limit = parseInt(res.headers.get("X-Calls-Limit")   || state.callsLimit);
-  const mins  = parseInt(res.headers.get("X-Reset-Minutes") || state.resetMinutes);
-  updateCounter(used, limit, mins);
- 
+
+  if (res.status === 503) { showLimitModal(); throw new Error("Daily limit reached."); }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "API error");
   }
+
+  updateCounter();
   return res.json();
 }
- 
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 1 — UPLOAD
 // ═══════════════════════════════════════════════════════════════════════════════
- 
+
 const dropZone = $("dropZone");
 dropZone.addEventListener("dragover",  e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
 dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
 dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("drag-over"); if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]); });
 dropZone.addEventListener("click", () => $("fileInput").click());
 $("fileInput").addEventListener("change", () => { if ($("fileInput").files[0]) setFile($("fileInput").files[0]); });
- 
+
 function setFile(f) { state._pendingFile = f; $("dropFilename").textContent = f.name; }
- 
+
 $("processBtn").addEventListener("click", async () => {
   const btn = $("processBtn");
   const pasteText = $("pasteText").value.trim();
   let text = "";
- 
+
   if (pasteText) {
     text = pasteText;
   } else if (state._pendingFile) {
@@ -119,21 +113,21 @@ $("processBtn").addEventListener("click", async () => {
       } catch (e) { toast("PDF error: " + e.message, "error"); return; }
     } else { text = await state._pendingFile.text(); }
   } else { toast("Upload a file or paste text first.", "error"); return; }
- 
+
   if (text.length < 100) { toast("Text too short.", "error"); return; }
   state.rawText = text;
   btn.disabled = true; btn.textContent = "Analysing…";
- 
+
   try {
     const data = await api("/process", { text });
     state.processedData = data;
     renderSummary(data);
     unlockTab("quiz");
-    toast("Done ✓", "success");
+    toast("Done ✓ — Quiz tab is now available!", "success");
   } catch (e) { toast("Error: " + e.message, "error"); }
   finally { btn.disabled = false; btn.textContent = "Analyse →"; }
 });
- 
+
 function renderSummary(d) {
   $("summarySubject").textContent = d.subject_area;
   $("summaryTopic").textContent   = d.topic;
@@ -141,17 +135,17 @@ function renderSummary(d) {
   dc.textContent = d.difficulty; dc.className = `chip ${d.difficulty?.toLowerCase()}`;
   $("wordChip").textContent = `${d.word_count?.toLocaleString()} words`;
   $("timeChip").textContent = `~${d.study_time_min}min`;
- 
+
   const ul = $("conceptList"); ul.innerHTML = "";
   (d.summary_points||[]).forEach(p => { const li = document.createElement("li"); li.textContent = p; ul.appendChild(li); });
- 
+
   const tc = $("termChips"); tc.innerHTML = "";
   (d.key_terms||[]).forEach(t => { const s = document.createElement("span"); s.className = "tag"; s.textContent = t; tc.appendChild(s); });
- 
+
   $("summaryCard").classList.remove("hidden");
   $("summaryCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
- 
+
 $("loadExtrasBtn").addEventListener("click", async () => {
   if (state.extras) { toast("Already generated!", "success"); ["flashcards","exam","simple"].forEach(unlockTab); return; }
   const btn = $("loadExtrasBtn"); btn.disabled = true; btn.textContent = "Generating…";
@@ -162,17 +156,17 @@ $("loadExtrasBtn").addEventListener("click", async () => {
     renderFlashcards(data.flashcards);
     renderExamQuestions(data.exam_questions);
     renderSimple(data.simple_explanation);
-    toast("Study aids ready ✓", "success");
+    toast("Study aids ready ✓ — 3 new tabs unlocked!", "success");
   } catch (e) { toast("Error: " + e.message, "error"); }
   finally { btn.disabled = false; btn.textContent = "Generate study aids"; }
 });
- 
+
 $("goToQuizBtn").addEventListener("click", () => switchTab("quiz"));
- 
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// TAB 2 — QUIZ (pre-generated feedback, zero extra API calls)
+// TAB 2 — QUIZ
 // ═══════════════════════════════════════════════════════════════════════════════
- 
+
 $("generateQuizBtn").addEventListener("click", async () => {
   const btn = $("generateQuizBtn"); btn.disabled = true; btn.textContent = "Generating…";
   try {
@@ -184,14 +178,14 @@ $("generateQuizBtn").addEventListener("click", async () => {
     renderQuestion();
   } catch (e) { toast("Error: " + e.message, "error"); btn.disabled = false; btn.textContent = "Generate Quiz →"; }
 });
- 
+
 function renderQuestion() {
   const q = state.quizQuestions[state.quizIndex]; if (!q) return;
-  $("quizCurrent").textContent = state.quizIndex + 1;
-  $("quizTag").textContent     = q.topic_tag || "";
-  $("quizFill").style.width    = `${(state.quizIndex / state.quizQuestions.length) * 100}%`;
+  $("quizCurrent").textContent  = state.quizIndex + 1;
+  $("quizTag").textContent      = q.topic_tag || "";
+  $("quizFill").style.width     = `${(state.quizIndex / state.quizQuestions.length) * 100}%`;
   $("questionText").textContent = q.question;
- 
+
   const grid = $("optionsGrid"); grid.innerHTML = "";
   ["A","B","C","D"].forEach((letter, i) => {
     const btn = document.createElement("button"); btn.className = "option-btn";
@@ -199,20 +193,20 @@ function renderQuestion() {
     btn.addEventListener("click", () => handleAnswer(i, q));
     grid.appendChild(btn);
   });
- 
+
   $("feedbackBox").classList.add("hidden");
   $("feedbackBox").className = "feedback hidden";
   $("nextBtn").classList.add("hidden");
   const card = $("questionCard"); card.style.animation = "none"; requestAnimationFrame(() => { card.style.animation = ""; });
 }
- 
+
 function handleAnswer(idx, q) {
   document.querySelectorAll(".option-btn").forEach(b => b.disabled = true);
   const correct = idx === q.correct_index;
   state.quizAnswers.push({ is_correct: correct, topic_tag: q.topic_tag });
   document.querySelectorAll(".option-btn")[q.correct_index].classList.add("correct");
   if (!correct) document.querySelectorAll(".option-btn")[idx].classList.add("incorrect");
- 
+
   const exp = correct ? q.correct_explanation : (q.wrong_explanations?.[String(idx)] || q.correct_explanation);
   const fb  = $("feedbackBox");
   fb.className = `feedback ${correct ? "correct-fb" : "incorrect-fb"}`;
@@ -220,13 +214,13 @@ function handleAnswer(idx, q) {
   fb.classList.remove("hidden");
   $("nextBtn").classList.remove("hidden");
 }
- 
+
 $("nextBtn").addEventListener("click", () => {
   state.quizIndex++;
   if (state.quizIndex >= state.quizQuestions.length) renderScore();
   else renderQuestion();
 });
- 
+
 function renderScore() {
   $("quizWrap").classList.add("hidden");
   const correct = state.quizAnswers.filter(a => a.is_correct).length;
@@ -249,18 +243,18 @@ function renderScore() {
     localStorage.setItem("sb_scores", JSON.stringify(h.slice(0,3)));
   } catch {}
 }
- 
+
 function retakeQuiz() {
   $("scoreCard").classList.add("hidden");
   state.quizIndex = 0; state.quizAnswers = [];
   $("quizWrap").classList.remove("hidden");
   renderQuestion();
 }
- 
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 3 — FLASHCARDS
 // ═══════════════════════════════════════════════════════════════════════════════
- 
+
 function renderFlashcards(cards) {
   if (!cards?.length) return;
   state.fcDeck = cards.map((_,i)=>i); state.fcIndex = 0; state.fcKnown = new Set();
@@ -274,17 +268,17 @@ function showCard() {
   $("flashcard").classList.remove("flipped");
   setTimeout(() => { $("fcTerm").textContent = c.term; $("fcDef").textContent = c.definition; $("fcKnown").textContent = state.fcKnown.size; }, 150);
 }
-$("flashcard").addEventListener("click", () => $("flashcard").classList.toggle("flipped"));
-$("fcPrev").addEventListener("click",    () => { if (state.fcIndex > 0) { state.fcIndex--; showCard(); } });
-$("fcNext").addEventListener("click",    () => { if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } });
-$("fcKnownBtn").addEventListener("click",() => { state.fcKnown.add(state.fcDeck[state.fcIndex]); $("fcKnown").textContent = state.fcKnown.size; if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } else toast("All cards done! 🎉","success"); });
-$("fcReview").addEventListener("click",  () => { state.fcKnown.delete(state.fcDeck[state.fcIndex]); if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } });
-$("fcShuffle").addEventListener("click", () => { state.fcDeck = state.fcDeck.sort(()=>Math.random()-.5); state.fcIndex=0; showCard(); toast("Shuffled!"); });
- 
+$("flashcard").addEventListener("click",  () => $("flashcard").classList.toggle("flipped"));
+$("fcPrev").addEventListener("click",     () => { if (state.fcIndex > 0) { state.fcIndex--; showCard(); } });
+$("fcNext").addEventListener("click",     () => { if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } });
+$("fcKnownBtn").addEventListener("click", () => { state.fcKnown.add(state.fcDeck[state.fcIndex]); $("fcKnown").textContent = state.fcKnown.size; if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } else toast("All cards done! 🎉","success"); });
+$("fcReview").addEventListener("click",   () => { state.fcKnown.delete(state.fcDeck[state.fcIndex]); if (state.fcIndex < state.fcDeck.length-1) { state.fcIndex++; showCard(); } });
+$("fcShuffle").addEventListener("click",  () => { state.fcDeck = state.fcDeck.sort(()=>Math.random()-.5); state.fcIndex=0; showCard(); toast("Shuffled!"); });
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 4 — EXAM PREP
 // ═══════════════════════════════════════════════════════════════════════════════
- 
+
 function renderExamQuestions(qs) {
   if (!qs?.length) return;
   $("examLoading").classList.add("hidden");
@@ -305,11 +299,11 @@ function renderExamQuestions(qs) {
     list.appendChild(el);
   });
 }
- 
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // TAB 5 — EXPLAIN SIMPLY
 // ═══════════════════════════════════════════════════════════════════════════════
- 
+
 function renderSimple(text) {
   if (!text) return;
   $("simpleLoading").classList.add("hidden");
@@ -317,10 +311,10 @@ function renderSimple(text) {
   const w = $("simpleText"); w.innerHTML = "";
   text.split(/\n+/).filter(p=>p.trim()).forEach(p => { const el = document.createElement("p"); el.textContent = p; w.appendChild(el); });
 }
- 
+
 $("followupBtn").addEventListener("click", sendFollowup);
 $("followupInput").addEventListener("keydown", e => { if (e.key === "Enter") sendFollowup(); });
- 
+
 async function sendFollowup() {
   const q = $("followupInput").value.trim(); if (!q) return;
   if (state.followupCount >= 3) { toast("Follow-up limit reached (3 max).", "error"); return; }
@@ -338,7 +332,7 @@ async function sendFollowup() {
   } catch (e) { resp.textContent = "Error: " + e.message; }
   btn.disabled = false; btn.textContent = "Ask";
 }
- 
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 (async () => {
   try {
@@ -350,4 +344,3 @@ async function sendFollowup() {
     toast("Backend not reachable.", "error");
   }
 })();
- 
