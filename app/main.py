@@ -26,7 +26,7 @@ client = OpenAI(
 )
 MODELS = [
     "deepseek/deepseek-v4-flash:free",      # primary   — 1M context, fast
-    "google/gemma-4-26b-a4b-it:free",           # fallback1 — 262K context, solid
+    "google/gemma-4-26b-a4b-it:free",        # fallback1 — 262K context, solid
     "meta-llama/llama-3.3-70b-instruct:free" # fallback2 — 131K context, stable
 ]
 
@@ -111,14 +111,15 @@ def call_llm(system: str, user: str) -> str:
                     {"role": "system", "content": system},
                     {"role": "user",   "content": user},
                 ],
+                max_tokens=4096,
             )
             return response.choices[0].message.content
         except Exception as e:
             err = str(e).lower()
-            if "rate limit" in err or "429" in err or "quota" in err:
+            if any(x in err for x in ["rate limit", "429", "quota", "provider returned error", "max_tokens"]):
                 last_error = e
                 continue   # try next model
-            raise          # non-rate-limit error — bubble up immediately
+            raise          # other errors — bubble up immediately
     raise HTTPException(503, f"All models rate-limited. Try again later. Last error: {last_error}")
 
 def parse_json(raw: str) -> dict | list:
