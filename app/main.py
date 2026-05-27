@@ -26,7 +26,7 @@ client = OpenAI(
 )
 MODELS = [
     "deepseek/deepseek-v4-flash:free",      # primary   — 1M context, fast
-    "google/gemma-4-26b-a4b:free",           # fallback1 — 262K context, solid
+    "google/gemma-4-26b-a4b-it:free",           # fallback1 — 262K context, solid
     "meta-llama/llama-3.3-70b-instruct:free" # fallback2 — 131K context, stable
 ]
 
