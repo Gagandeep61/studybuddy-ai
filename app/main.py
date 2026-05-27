@@ -24,7 +24,11 @@ client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ.get("OPENROUTER_API_KEY"),
 )
-MODEL = "deepseek/deepseek-v3:free"
+MODELS = [
+    "deepseek/deepseek-v4-flash:free",      # primary   — 1M context, fast
+    "google/gemma-4-26b-a4b:free",           # fallback1 — 262K context, solid
+    "meta-llama/llama-3.3-70b-instruct:free" # fallback2 — 131K context, stable
+]
 
 # ── File persistence ──────────────────────────────────────────────────────────
 # /data exists on HuggingFace Spaces and survives restarts.
@@ -33,7 +37,7 @@ DATA_DIR   = Path("/data") if Path("/data").exists() else Path(".")
 DAILY_FILE = DATA_DIR / "sb_daily.json"
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DAILY_LIMIT    = 200
+DAILY_LIMIT    = 50
 FOLLOWUP_LIMIT = 3
 
 # ── Lock — one thread at a time reads/writes the daily JSON ──────────────────
@@ -98,14 +102,24 @@ def check_limits(response: Response):
 # ══════════════════════════════════════════════════════════════════════════════
 
 def call_llm(system: str, user: str) -> str:
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user",   "content": user},
-        ],
-    )
-    return response.choices[0].message.content
+    last_error = None
+    for model in MODELS:
+        try:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": user},
+                ],
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            err = str(e).lower()
+            if "rate limit" in err or "429" in err or "quota" in err:
+                last_error = e
+                continue   # try next model
+            raise          # non-rate-limit error — bubble up immediately
+    raise HTTPException(503, f"All models rate-limited. Try again later. Last error: {last_error}")
 
 def parse_json(raw: str) -> dict | list:
     # Strip any markdown fences the model may add despite instructions
@@ -135,7 +149,7 @@ class FollowUpRequest(BaseModel):
 def health():
     with _lock:
         dr = daily_remaining()
-    return {"status": "ok", "model": MODEL, "daily_remaining": dr}
+    return {"status": "ok", "model": MODELS[0], "fallback_models": MODELS[1:], "daily_remaining": dr}
 
 
 @app.post("/extract-pdf")
@@ -216,4 +230,3 @@ def followup(req: FollowUpRequest, response: Response):
     )
     answer = call_llm(FOLLOWUP_SYSTEM, user_msg)
     return {"answer": answer}
-    
