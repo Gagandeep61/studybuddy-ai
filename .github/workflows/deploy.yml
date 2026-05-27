@@ -7,39 +7,49 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    
+    # Fixes the Node 20 deprecation warning
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true 
+      
     steps:
       - name: Checkout GitHub Repository
         uses: actions/checkout@v5
 
-      # 1. Download the existing HF Space (This protects your frontend files!)
+      # 1. Download the existing HF Space
       - name: Clone Existing Hugging Face Space
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           git clone https://gagan61:$HF_TOKEN@huggingface.co/spaces/gagan61/studybuddy-ai hf_workspace
 
-      # 2. Copy ONLY your updated backend files into that workspace
+      # 2. Inject files and generate the YAML config dynamically
       - name: Inject Updated Backend Files
         run: |
-          # Copy your entire 'app' directory
           cp -r app hf_workspace/
-          
-          # Copy your requirements and Dockerfile from the root
           cp requirements.txt hf_workspace/
           cp Dockerfile hf_workspace/
-          
-          # Inject the Hugging Face YAML config
-          cp hf-config.txt hf_workspace/README.md
 
-      # 3. Commit the merged files and push them back cleanly
+          # This creates the HF config dynamically on the runner.
+          # It goes straight to HF and NEVER touches your GitHub README!
+          cat << 'EOF' > hf_workspace/README.md
+          ---
+          title: StudyBuddy AI
+          emoji: 📚
+          colorFrom: blue
+          colorTo: indigo
+          sdk: docker
+          pinned: false
+          ---
+          EOF
+
+      # 3. Commit and push back to HF
       - name: Push Safely to Hugging Face
         run: |
           cd hf_workspace
+          # Using standard GitHub Actions bot credentials for complete anonymity
           git config user.name "github-actions[bot]"
           git config user.email "actions@github.com"
           git add .
-          # The '|| echo' prevents the pipeline from failing if no files actually changed
           git commit -m "Deploying backend update via CI/CD" || echo "No changes to commit"
           git push origin main
