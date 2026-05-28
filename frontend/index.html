@@ -10,7 +10,7 @@
 </head>
 <body>
 
-  <!-- ── Header: logo + counter only (tabs moved below) ─────────────────── -->
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header class="header">
     <div class="logo">StudyBuddy<span>AI</span></div>
     <div class="header-right">
@@ -22,11 +22,9 @@
     </div>
   </header>
 
-  <!-- ── Tab nav: full-width strip between header and content ───────────── -->
+  <!-- ── Tab nav ────────────────────────────────────────────────────────── -->
   <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Study sections">
-    <button class="tab active" data-tab="upload" role="tab" aria-selected="true">
-      Upload
-    </button>
+    <button class="tab active" data-tab="upload" role="tab" aria-selected="true">Upload</button>
     <button class="tab" data-tab="quiz" role="tab" aria-selected="false" disabled>
       Quiz <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
     </button>
@@ -168,7 +166,7 @@
       <div class="hidden" id="simpleWrap">
         <div class="simple-text" id="simpleText"></div>
         <div class="followup-section">
-          <p class="section-label">Follow-up questions <span class="mono dim" id="followupCounter">(3 remaining)</span></p>
+          <p class="section-label">Follow-up questions <span class="mono dim" id="followupCounter"></span></p>
           <div class="followup-row">
             <input type="text" id="followupInput" class="input" placeholder="Ask anything about this topic…" />
             <button class="btn-primary" id="followupBtn">Ask</button>
@@ -180,13 +178,33 @@
 
   </main>
 
-  <!-- LIMIT MODAL -->
+  <!-- ── Loading overlay (shown during AI calls) ────────────────────────── -->
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="loading-box">
+      <div class="loading-spinner"></div>
+      <p class="loading-title" id="loadingTitle">Analysing your material…</p>
+      <p class="loading-sub" id="loadingSub">AI is reading through your content</p>
+    </div>
+  </div>
+
+  <!-- ── Daily limit modal (503) ────────────────────────────────────────── -->
   <div class="modal-overlay hidden" id="limitModal">
     <div class="modal">
       <h2>Daily limit reached</h2>
       <p>The demo has hit its daily AI call limit.</p>
       <p class="modal-timer mono">Resets at midnight UTC</p>
       <p class="dim small">This is a portfolio demo — limits keep it free for everyone.</p>
+    </div>
+  </div>
+
+  <!-- ── Busy modal (502) ───────────────────────────────────────────────── -->
+  <div class="modal-overlay hidden" id="busyModal">
+    <div class="modal">
+      <h2>AI models busy</h2>
+      <p>All models are temporarily rate-limited.</p>
+      <p class="modal-timer mono">Please retry in 60s</p>
+      <p class="dim small">This is a free-tier demo — wait a moment and try again.</p>
+      <button class="btn-primary" id="busyModalClose" style="margin-top:20px">Got it</button>
     </div>
   </div>
 

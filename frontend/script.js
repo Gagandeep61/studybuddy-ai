@@ -1,4 +1,4 @@
-/* StudyBuddy AI — script.js */
+/* StudyBuddy AI — script.js v4 */
 
 const API_URL = "https://gagan61-studybuddy-ai.hf.space";
 
@@ -9,21 +9,38 @@ const state = {
   extras: null,
   fcIndex: 0, fcKnown: new Set(), fcDeck: [],
   followupCount: 0,
-  callsUsed: 0,       // local session count, resets on page reload
+  callsUsed: 0,
   _pendingFile: null,
 };
 
 const $ = id => document.getElementById(id);
+
+// ── Loading overlay ───────────────────────────────────────────────────────────
+const LOADING_MESSAGES = {
+  process:  { title: "Analysing your material…",   sub: "AI is reading through your content" },
+  quiz:     { title: "Generating your quiz…",       sub: "Crafting 10 questions from your notes" },
+  extras:   { title: "Building study aids…",        sub: "Creating flashcards, exam prep & explanation" },
+  followup: { title: "Thinking…",                   sub: "Finding the best answer for you" },
+  pdf:      { title: "Reading PDF…",                sub: "Extracting text from your document" },
+};
+
+function showLoading(type = "process") {
+  const msg = LOADING_MESSAGES[type] || LOADING_MESSAGES.process;
+  $("loadingTitle").textContent = msg.title;
+  $("loadingSub").textContent   = msg.sub;
+  $("loadingOverlay").classList.remove("hidden");
+}
+
+function hideLoading() {
+  $("loadingOverlay").classList.add("hidden");
+}
 
 // ── Tabs ──────────────────────────────────────────────────────────────────────
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     if (btn.disabled) return;
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
-    document.querySelectorAll(".tab").forEach(b => {
-      b.classList.remove("active", "has-badge");
-      b.removeAttribute("aria-selected");
-    });
+    document.querySelectorAll(".tab").forEach(b => { b.classList.remove("active", "has-badge"); b.removeAttribute("aria-selected"); });
     $(`tab-${btn.dataset.tab}`).classList.add("active");
     btn.classList.add("active");
     btn.setAttribute("aria-selected", "true");
@@ -53,7 +70,7 @@ function toast(msg, type = "") {
   toastTimer = setTimeout(() => t.classList.add("hidden"), 3500);
 }
 
-// ── Call counter (local, informational only) ──────────────────────────────────
+// ── Call counter ──────────────────────────────────────────────────────────────
 function updateCounter() {
   state.callsUsed++;
   const visualPct = Math.min(100, (state.callsUsed / 15) * 100);
@@ -61,10 +78,10 @@ function updateCounter() {
   $("callsLabel").textContent = `${state.callsUsed} used`;
 }
 
-// ── Daily limit modal ─────────────────────────────────────────────────────────
-function showLimitModal() {
-  $("limitModal").classList.remove("hidden");
-}
+// ── Modals ────────────────────────────────────────────────────────────────────
+function showLimitModal() { $("limitModal").classList.remove("hidden"); }
+function showBusyModal()  { $("busyModal").classList.remove("hidden"); }
+$("busyModalClose").addEventListener("click", () => $("busyModal").classList.add("hidden"));
 
 // ── API fetch ─────────────────────────────────────────────────────────────────
 async function api(endpoint, body, isForm = false) {
@@ -75,6 +92,7 @@ async function api(endpoint, body, isForm = false) {
   const res = await fetch(`${API_URL}${endpoint}`, opts);
 
   if (res.status === 503) { showLimitModal(); throw new Error("Daily limit reached."); }
+  if (res.status === 502) { showBusyModal();  throw new Error("All models busy."); }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
@@ -107,16 +125,19 @@ $("processBtn").addEventListener("click", async () => {
     text = pasteText;
   } else if (state._pendingFile) {
     if (state._pendingFile.type === "application/pdf") {
+      showLoading("pdf");
       try {
         const fd = new FormData(); fd.append("file", state._pendingFile);
         const d = await api("/extract-pdf", fd, true); text = d.text;
-      } catch (e) { toast("PDF error: " + e.message, "error"); return; }
+      } catch (e) { hideLoading(); toast("PDF error: " + e.message, "error"); return; }
+      hideLoading();
     } else { text = await state._pendingFile.text(); }
   } else { toast("Upload a file or paste text first.", "error"); return; }
 
   if (text.length < 100) { toast("Text too short.", "error"); return; }
   state.rawText = text;
   btn.disabled = true; btn.textContent = "Analysing…";
+  showLoading("process");
 
   try {
     const data = await api("/process", { text });
@@ -124,8 +145,12 @@ $("processBtn").addEventListener("click", async () => {
     renderSummary(data);
     unlockTab("quiz");
     toast("Done ✓ — Quiz tab is now available!", "success");
-  } catch (e) { toast("Error: " + e.message, "error"); }
-  finally { btn.disabled = false; btn.textContent = "Analyse →"; }
+  } catch (e) {
+    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
+  } finally {
+    hideLoading();
+    btn.disabled = false; btn.textContent = "Analyse →";
+  }
 });
 
 function renderSummary(d) {
@@ -149,6 +174,7 @@ function renderSummary(d) {
 $("loadExtrasBtn").addEventListener("click", async () => {
   if (state.extras) { toast("Already generated!", "success"); ["flashcards","exam","simple"].forEach(unlockTab); return; }
   const btn = $("loadExtrasBtn"); btn.disabled = true; btn.textContent = "Generating…";
+  showLoading("extras");
   try {
     const data = await api("/generate-extras", { text: state.rawText });
     state.extras = data;
@@ -157,8 +183,12 @@ $("loadExtrasBtn").addEventListener("click", async () => {
     renderExamQuestions(data.exam_questions);
     renderSimple(data.simple_explanation);
     toast("Study aids ready ✓ — 3 new tabs unlocked!", "success");
-  } catch (e) { toast("Error: " + e.message, "error"); }
-  finally { btn.disabled = false; btn.textContent = "Generate study aids"; }
+  } catch (e) {
+    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
+  } finally {
+    hideLoading();
+    btn.disabled = false; btn.textContent = "Generate study aids";
+  }
 });
 
 $("goToQuizBtn").addEventListener("click", () => switchTab("quiz"));
@@ -169,6 +199,7 @@ $("goToQuizBtn").addEventListener("click", () => switchTab("quiz"));
 
 $("generateQuizBtn").addEventListener("click", async () => {
   const btn = $("generateQuizBtn"); btn.disabled = true; btn.textContent = "Generating…";
+  showLoading("quiz");
   try {
     const data = await api("/generate-quiz", { text: state.rawText });
     state.quizQuestions = data.questions; state.quizIndex = 0; state.quizAnswers = [];
@@ -176,7 +207,10 @@ $("generateQuizBtn").addEventListener("click", async () => {
     $("quizWrap").classList.remove("hidden");
     $("quizTotal").textContent = data.questions.length;
     renderQuestion();
-  } catch (e) { toast("Error: " + e.message, "error"); btn.disabled = false; btn.textContent = "Generate Quiz →"; }
+  } catch (e) {
+    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
+    btn.disabled = false; btn.textContent = "Generate Quiz →";
+  } finally { hideLoading(); }
 });
 
 function renderQuestion() {
@@ -317,20 +351,26 @@ $("followupInput").addEventListener("keydown", e => { if (e.key === "Enter") sen
 
 async function sendFollowup() {
   const q = $("followupInput").value.trim(); if (!q) return;
-  if (state.followupCount >= 3) { toast("Follow-up limit reached (3 max).", "error"); return; }
   const btn = $("followupBtn"); btn.disabled = true; btn.textContent = "…";
   const resp = $("followupResponse");
   resp.classList.remove("hidden"); resp.textContent = "Thinking…";
+  showLoading("followup");
   try {
-    const d = await api("/followup", { context: $("simpleText").textContent, topic: state.processedData?.topic||"", question: q, followup_count: state.followupCount });
+    const d = await api("/followup", {
+      context:  $("simpleText").textContent,
+      topic:    state.processedData?.topic || "",
+      question: q,
+    });
     resp.textContent = d.answer;
     state.followupCount++;
     $("followupInput").value = "";
-    const rem = 3 - state.followupCount;
-    $("followupCounter").textContent = rem > 0 ? `(${rem} remaining)` : "(limit reached)";
-    if (rem === 0) { $("followupInput").disabled = true; btn.textContent = "Limit reached"; return; }
-  } catch (e) { resp.textContent = "Error: " + e.message; }
-  btn.disabled = false; btn.textContent = "Ask";
+    $("followupCounter").textContent = `(${state.followupCount} asked)`;
+  } catch (e) {
+    if (!e.message.includes("limit") && !e.message.includes("busy")) resp.textContent = "Error: " + e.message;
+  } finally {
+    hideLoading();
+    btn.disabled = false; btn.textContent = "Ask";
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
