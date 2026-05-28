@@ -1,9 +1,12 @@
 """
-main.py — StudyBuddy AI v3
-Rate limiting: single global daily cap of 50 successful LLM calls, resets at midnight UTC.
-Failed/errored calls do NOT count. Counter increments only on successful LLM response.
-Persisted to /data/sb_daily.json on HuggingFace (survives container restarts).
-Threading lock prevents concurrent writes corrupting the JSON file.
+main.py — StudyBuddy AI v4
+Changes from v3:
+- Groq added as PRIMARY provider (high RPM, free) → OpenRouter as fallback chain
+- OCR support: pymupdf (text PDFs) → pytesseract (scanned/image PDFs)
+- 502 vs 503: model exhaustion = 502, daily cap = 503 (frontend shows different messages)
+- Follow-up call cap removed entirely
+- DAILY_LIMIT raised to 100 (Groq handles most traffic, OR rarely bottlenecks)
+- Counter increments only on successful LLM response
 """
 
 import os, io, json, re, threading
@@ -15,39 +18,46 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from openai import OpenAI
 import PyPDF2
+import fitz
+import pytesseract
+from pdf2image import convert_from_bytes
 
 from .prompts import PROCESS_PROMPT, QUIZ_PROMPT, EXTRAS_PROMPT, FOLLOWUP_SYSTEM
 from dotenv import load_dotenv
 load_dotenv()
 
-# ── LLM client ────────────────────────────────────────────────────────────────
-client = OpenAI(
+# ── LLM clients ───────────────────────────────────────────────────────────────
+_groq_client = OpenAI(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.environ.get("GROQ_API_KEY"),
+)
+_or_client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.environ.get("OPENROUTER_API_KEY"),
 )
-MODELS = [
-    "deepseek/deepseek-v4-flash:free",      # primary   — 1M context, fast
-    "google/gemma-4-26b-a4b-it:free",        # fallback1 — 262K context, solid
-    "meta-llama/llama-3.3-70b-instruct:free" # fallback2 — 131K context, stable
+
+# (client, model) pairs — tried in order on rate limit / error
+LLM_MODELS = [
+    (_groq_client, "llama-3.3-70b-versatile"),
+    (_or_client,   "deepseek/deepseek-v4-flash:free"),
+    (_or_client,   "google/gemma-4-26b-a4b-it:free"),
+    (_or_client,   "meta-llama/llama-3.3-70b-instruct:free"),
 ]
 
 # ── File persistence ──────────────────────────────────────────────────────────
-# /data exists on HuggingFace Spaces and survives restarts.
-# Falls back to current directory for local development.
 DATA_DIR   = Path("/data") if Path("/data").exists() else Path(".")
 DAILY_FILE = DATA_DIR / "sb_daily.json"
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-DAILY_LIMIT    = 50
-FOLLOWUP_LIMIT = 3
+DAILY_LIMIT = 100
 
-# ── Lock — one thread at a time reads/writes the daily JSON ──────────────────
+# ── Lock ──────────────────────────────────────────────────────────────────────
 _lock = threading.Lock()
 
-app = FastAPI(title="StudyBuddy AI", version="3.0.0")
+app = FastAPI(title="StudyBuddy AI", version="4.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # replace * with your Vercel URL after deploying
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -85,7 +95,7 @@ def daily_remaining() -> int:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RATE LIMIT CHECK — called at the top of every endpoint
+# RATE LIMIT GUARD
 # ══════════════════════════════════════════════════════════════════════════════
 
 def check_limits(response: Response):
@@ -103,9 +113,9 @@ def check_limits(response: Response):
 
 def call_llm(system: str, user: str) -> str:
     last_error = None
-    for model in MODELS:
+    for llm_client, model in LLM_MODELS:
         try:
-            response = client.chat.completions.create(
+            resp = llm_client.chat.completions.create(
                 model=model,
                 messages=[
                     {"role": "system", "content": system},
@@ -113,23 +123,23 @@ def call_llm(system: str, user: str) -> str:
                 ],
                 max_tokens=4096,
             )
-            content = response.choices[0].message.content
+            content = resp.choices[0].message.content
             if content is None:
                 last_error = ValueError(f"{model} returned empty content")
                 continue
             with _lock:
-                _increment_daily()  # only count successful LLM calls
+                _increment_daily()
             return content
         except Exception as e:
             err = str(e).lower()
-            if any(x in err for x in ["rate limit", "429", "quota", "provider returned error", "max_tokens"]):
+            if any(x in err for x in ["rate limit", "429", "quota", "provider returned error", "max_tokens", "overloaded"]):
                 last_error = e
-                continue   # try next model
-            raise          # other errors — bubble up immediately
-    raise HTTPException(503, f"All models rate-limited. Try again later. Last error: {last_error}")
+                continue
+            raise
+    raise HTTPException(502, "All AI models temporarily busy. Please retry in 60 seconds.")
+
 
 def parse_json(raw: str) -> dict | list:
-    # Strip any markdown fences the model may add despite instructions
     cleaned = re.sub(r"```(?:json)?", "", raw).replace("```", "").strip()
     return json.loads(cleaned)
 
@@ -142,10 +152,9 @@ class TextRequest(BaseModel):
     text: str
 
 class FollowUpRequest(BaseModel):
-    context:        str
-    topic:          str
-    question:       str
-    followup_count: int   # frontend tracks how many follow-ups have been sent
+    context:  str
+    topic:    str
+    question: str
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -156,19 +165,56 @@ class FollowUpRequest(BaseModel):
 def health():
     with _lock:
         dr = daily_remaining()
-    return {"status": "ok", "model": MODELS[0], "fallback_models": MODELS[1:], "daily_remaining": dr}
+    return {
+        "status":          "ok",
+        "version":         "4.0.0",
+        "model":           LLM_MODELS[0][1],
+        "fallback_models": [m for _, m in LLM_MODELS[1:]],
+        "daily_remaining": dr,
+        "daily_limit":     DAILY_LIMIT,
+    }
 
 
 @app.post("/extract-pdf")
 async def extract_pdf(file: UploadFile = File(...)):
-    """Extract text from an uploaded PDF. No LLM call — does not count toward daily limit."""
+    """
+    Extract text from PDF. No LLM call — does not count toward daily limit.
+    Strategy 1: pymupdf    — digital/text-based PDFs (fast)
+    Strategy 2: pytesseract — scanned/image PDFs (OCR)
+    Strategy 3: PyPDF2     — legacy fallback
+    """
     contents = await file.read()
-    reader   = PyPDF2.PdfReader(io.BytesIO(contents))
-    pages    = [p.extract_text() for p in reader.pages if p.extract_text()]
-    text     = "\n\n".join(pages)
-    if not text.strip():
-        raise HTTPException(400, "Could not extract text. Use a text-based PDF or paste text directly.")
-    return {"text": text}
+
+    # Strategy 1: pymupdf
+    try:
+        doc   = fitz.open(stream=contents, filetype="pdf")
+        pages = [page.get_text() for page in doc if page.get_text().strip()]
+        doc.close()
+        if pages:
+            return {"text": "\n\n".join(pages), "method": "pymupdf"}
+    except Exception:
+        pass
+
+    # Strategy 2: OCR
+    try:
+        images = convert_from_bytes(contents, dpi=200)
+        pages  = [pytesseract.image_to_string(img) for img in images]
+        pages  = [p for p in pages if p.strip()]
+        if pages:
+            return {"text": "\n\n".join(pages), "method": "ocr"}
+    except Exception:
+        pass
+
+    # Strategy 3: PyPDF2
+    try:
+        reader = PyPDF2.PdfReader(io.BytesIO(contents))
+        pages  = [p.extract_text() for p in reader.pages if p.extract_text()]
+        if pages:
+            return {"text": "\n\n".join(pages), "method": "pypdf2"}
+    except Exception:
+        pass
+
+    raise HTTPException(400, "Could not extract text from this PDF. Try pasting text directly.")
 
 
 @app.post("/process")
@@ -177,13 +223,11 @@ def process_material(req: TextRequest, response: Response):
     check_limits(response)
     if not req.text.strip():
         raise HTTPException(400, "Text cannot be empty.")
-
     raw = call_llm(PROCESS_PROMPT, f"Study material:\n\n{req.text[:12000]}")
     try:
         data = parse_json(raw)
     except Exception:
         raise HTTPException(500, f"Parse error: {raw[:200]}")
-
     words                  = len(req.text.split())
     data["word_count"]     = words
     data["study_time_min"] = max(1, round(words / 200))
@@ -196,13 +240,11 @@ def generate_quiz(req: TextRequest, response: Response):
     check_limits(response)
     if not req.text.strip():
         raise HTTPException(400, "Text cannot be empty.")
-
     raw = call_llm(QUIZ_PROMPT, f"Study material:\n\n{req.text[:12000]}")
     try:
         data = parse_json(raw)
     except Exception:
         raise HTTPException(500, f"Parse error: {raw[:200]}")
-
     return {"questions": data}
 
 
@@ -212,22 +254,17 @@ def generate_extras(req: TextRequest, response: Response):
     check_limits(response)
     if not req.text.strip():
         raise HTTPException(400, "Text cannot be empty.")
-
     raw = call_llm(EXTRAS_PROMPT, f"Study material:\n\n{req.text[:12000]}")
     try:
         data = parse_json(raw)
     except Exception:
         raise HTTPException(500, f"Parse error: {raw[:200]}")
-
     return data
 
 
 @app.post("/followup")
 def followup(req: FollowUpRequest, response: Response):
-    """Answer a follow-up question in plain language."""
-    if req.followup_count >= FOLLOWUP_LIMIT:
-        raise HTTPException(400, f"Follow-up limit reached ({FOLLOWUP_LIMIT} per session).")
-
+    """Answer a follow-up question. No cap on follow-ups."""
     check_limits(response)
     user_msg = (
         f"Topic: {req.topic}\n\n"
