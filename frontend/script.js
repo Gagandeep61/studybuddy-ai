@@ -1,4 +1,4 @@
-/* StudyBuddy AI — script.js v4 */
+/* StudyBuddy AI — script.js v5 */
 
 const API_URL = "https://gagan61-studybuddy-ai.hf.space";
 
@@ -7,6 +7,8 @@ const state = {
   rawText: "", processedData: null,
   quizQuestions: [], quizIndex: 0, quizAnswers: [],
   extras: null,
+  extrasLoading: false,   // prevent duplicate /generate-extras calls
+  quizLoading:   false,   // prevent duplicate /generate-quiz calls
   fcIndex: 0, fcKnown: new Set(), fcDeck: [],
   followupCount: 0,
   callsUsed: 0,
@@ -39,11 +41,25 @@ function hideLoading() {
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => {
     if (btn.disabled) return;
+
+    // switch active panel & tab
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
-    document.querySelectorAll(".tab").forEach(b => { b.classList.remove("active", "has-badge"); b.removeAttribute("aria-selected"); });
+    document.querySelectorAll(".tab").forEach(b => {
+      b.classList.remove("active", "has-badge");
+      b.removeAttribute("aria-selected");
+    });
     $(`tab-${btn.dataset.tab}`).classList.add("active");
     btn.classList.add("active");
     btn.setAttribute("aria-selected", "true");
+
+    // lazy-load on first visit to each tab
+    const tab = btn.dataset.tab;
+    if (tab === "quiz" && !state.quizQuestions.length && state.rawText) {
+      loadQuiz();
+    }
+    if (["flashcards", "exam", "simple"].includes(tab) && !state.extras && state.rawText) {
+      loadExtras();
+    }
   });
 });
 
@@ -143,8 +159,9 @@ $("processBtn").addEventListener("click", async () => {
     const data = await api("/process", { text });
     state.processedData = data;
     renderSummary(data);
-    unlockTab("quiz");
-    toast("Done ✓ — Quiz tab is now available!", "success");
+    // unlock ALL tabs at once — each will lazy-load its data on first click
+    ["quiz", "flashcards", "exam", "simple"].forEach(unlockTab);
+    toast("Done ✓ — all tabs unlocked!", "success");
   } catch (e) {
     if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
   } finally {
@@ -171,47 +188,32 @@ function renderSummary(d) {
   $("summaryCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
-$("loadExtrasBtn").addEventListener("click", async () => {
-  if (state.extras) { toast("Already generated!", "success"); ["flashcards","exam","simple"].forEach(unlockTab); return; }
-  const btn = $("loadExtrasBtn"); btn.disabled = true; btn.textContent = "Generating…";
-  showLoading("extras");
-  try {
-    const data = await api("/generate-extras", { text: state.rawText });
-    state.extras = data;
-    ["flashcards","exam","simple"].forEach(unlockTab);
-    renderFlashcards(data.flashcards);
-    renderExamQuestions(data.exam_questions);
-    renderSimple(data.simple_explanation);
-    toast("Study aids ready ✓ — 3 new tabs unlocked!", "success");
-  } catch (e) {
-    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
-  } finally {
-    hideLoading();
-    btn.disabled = false; btn.textContent = "Generate study aids";
-  }
-});
-
 $("goToQuizBtn").addEventListener("click", () => switchTab("quiz"));
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TAB 2 — QUIZ
+// TAB 2 — QUIZ  (lazy-loaded on first tab click)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-$("generateQuizBtn").addEventListener("click", async () => {
-  const btn = $("generateQuizBtn"); btn.disabled = true; btn.textContent = "Generating…";
+async function loadQuiz() {
+  if (state.quizQuestions.length || state.quizLoading) return;
+  state.quizLoading = true;
   showLoading("quiz");
   try {
     const data = await api("/generate-quiz", { text: state.rawText });
-    state.quizQuestions = data.questions; state.quizIndex = 0; state.quizAnswers = [];
+    state.quizQuestions = data.questions;
+    state.quizIndex = 0;
+    state.quizAnswers = [];
     $("quizIdle").classList.add("hidden");
     $("quizWrap").classList.remove("hidden");
     $("quizTotal").textContent = data.questions.length;
     renderQuestion();
   } catch (e) {
-    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
-    btn.disabled = false; btn.textContent = "Generate Quiz →";
-  } finally { hideLoading(); }
-});
+    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Quiz error: " + e.message, "error");
+  } finally {
+    hideLoading();
+    state.quizLoading = false;
+  }
+}
 
 function renderQuestion() {
   const q = state.quizQuestions[state.quizIndex]; if (!q) return;
@@ -283,6 +285,29 @@ function retakeQuiz() {
   state.quizIndex = 0; state.quizAnswers = [];
   $("quizWrap").classList.remove("hidden");
   renderQuestion();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EXTRAS — single call, feeds Flashcards + Exam + Explain Simply
+// lazy-loaded on first click of any of the 3 tabs
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function loadExtras() {
+  if (state.extras || state.extrasLoading) return;  // already done or in-flight
+  state.extrasLoading = true;
+  showLoading("extras");
+  try {
+    const data = await api("/generate-extras", { text: state.rawText });
+    state.extras = data;
+    renderFlashcards(data.flashcards);
+    renderExamQuestions(data.exam_questions);
+    renderSimple(data.simple_explanation);
+  } catch (e) {
+    if (!e.message.includes("limit") && !e.message.includes("busy")) toast("Error: " + e.message, "error");
+  } finally {
+    hideLoading();
+    state.extrasLoading = false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════

@@ -81,7 +81,6 @@ body {
 .tab:not([disabled]):hover { color: var(--text); }
 .tab.active { color: var(--amber); border-bottom-color: var(--amber); font-weight: 600; }
 .tab[disabled] { color: var(--text-3); cursor: not-allowed; }
-.tab-lock { font-size: 10px; line-height: 1; }
 .tab-badge { display: none; width: 5px; height: 5px; border-radius: 50%; background: var(--amber); flex-shrink: 0; margin-left: 1px; }
 .tab.has-badge .tab-badge { display: inline-block; }
 @keyframes tabPulse { 0%,100% { color: var(--text-2); } 50% { color: var(--amber); } }

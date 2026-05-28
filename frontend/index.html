@@ -26,16 +26,16 @@
   <nav class="tab-nav" id="tabNav" role="tablist" aria-label="Study sections">
     <button class="tab active" data-tab="upload" role="tab" aria-selected="true">Upload</button>
     <button class="tab" data-tab="quiz" role="tab" aria-selected="false" disabled>
-      Quiz <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+      Quiz<span class="tab-badge" aria-hidden="true"></span>
     </button>
     <button class="tab" data-tab="flashcards" role="tab" aria-selected="false" disabled>
-      Flashcards <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+      Flashcards<span class="tab-badge" aria-hidden="true"></span>
     </button>
     <button class="tab" data-tab="exam" role="tab" aria-selected="false" disabled>
-      Exam Prep <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+      Exam Prep<span class="tab-badge" aria-hidden="true"></span>
     </button>
     <button class="tab" data-tab="simple" role="tab" aria-selected="false" disabled>
-      Explain Simply <span class="tab-lock" aria-hidden="true">🔒</span><span class="tab-badge" aria-hidden="true"></span>
+      Explain Simply<span class="tab-badge" aria-hidden="true"></span>
     </button>
   </nav>
 
@@ -86,7 +86,6 @@
           </div>
         </div>
         <div class="card-footer">
-          <button class="btn-secondary" id="loadExtrasBtn">Generate study aids</button>
           <button class="btn-ghost" id="goToQuizBtn">Go to Quiz →</button>
         </div>
       </div>
@@ -98,9 +97,7 @@
         <h1>Quiz</h1>
         <p>10 questions generated from your material.</p>
       </div>
-      <div id="quizIdle">
-        <button class="btn-primary" id="generateQuizBtn">Generate Quiz →</button>
-      </div>
+      <div class="loading-msg" id="quizIdle">Preparing your quiz…</div>
       <div class="hidden" id="quizWrap">
         <div class="quiz-meta">
           <span class="mono dim"><span id="quizCurrent">1</span> / <span id="quizTotal">10</span></span>
@@ -120,7 +117,7 @@
     <!-- TAB 3: FLASHCARDS -->
     <section class="panel" id="tab-flashcards" role="tabpanel">
       <div class="page-title"><h1>Flashcards</h1></div>
-      <div class="loading-msg" id="flashcardsLoading">Generate study aids from the Upload tab first.</div>
+      <div class="loading-msg" id="flashcardsLoading">Preparing your flashcards…</div>
       <div class="hidden" id="flashcardWrap">
         <p class="mono dim fc-counter"><span id="fcKnown">0</span> known · <span id="fcTotal">0</span> total</p>
         <div class="fc-scene">
@@ -152,7 +149,7 @@
         <h1>Exam Prep</h1>
         <p>5 questions likely to appear on your exam.</p>
       </div>
-      <div class="loading-msg" id="examLoading">Generate study aids from the Upload tab first.</div>
+      <div class="loading-msg" id="examLoading">Preparing your exam questions…</div>
       <div class="hidden" id="examList"></div>
     </section>
 
@@ -162,7 +159,7 @@
         <h1>Explain Simply</h1>
         <p>The whole topic, no jargon.</p>
       </div>
-      <div class="loading-msg" id="simpleLoading">Generate study aids from the Upload tab first.</div>
+      <div class="loading-msg" id="simpleLoading">Preparing your explanation…</div>
       <div class="hidden" id="simpleWrap">
         <div class="simple-text" id="simpleText"></div>
         <div class="followup-section">
