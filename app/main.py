@@ -121,7 +121,7 @@ def call_llm(system: str, user: str) -> str:
                     {"role": "system", "content": system},
                     {"role": "user",   "content": user},
                 ],
-                max_tokens=4096,
+                max_tokens=8192,
             )
             content = resp.choices[0].message.content
             if content is None:
@@ -250,7 +250,6 @@ def generate_quiz(req: TextRequest, response: Response):
 
 @app.post("/generate-extras")
 def generate_extras(req: TextRequest, response: Response):
-    """One call returns flashcards + exam prep + simple explanation."""
     check_limits(response)
     if not req.text.strip():
         raise HTTPException(400, "Text cannot be empty.")
@@ -258,9 +257,13 @@ def generate_extras(req: TextRequest, response: Response):
     try:
         data = parse_json(raw)
     except Exception:
-        raise HTTPException(500, f"Parse error: {raw[:200]}")
+        # try salvaging truncated JSON
+        try:
+            truncated = raw[:raw.rfind("}}")+2]  # cut to last clean closing
+            data = parse_json(truncated)
+        except Exception:
+            raise HTTPException(500, f"Parse error: {raw[:200]}")
     return data
-
 
 @app.post("/followup")
 def followup(req: FollowUpRequest, response: Response):
